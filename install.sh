@@ -3,7 +3,7 @@
 # Installer for the claude-gemini-workflow kit.
 #
 # Run from inside the target git repository:
-#     bash /path/to/tools/claude-gemini-workflow/install.sh [--dry-run]
+#     bash ~/tools/claude-gemini-workflow/install.sh [--dry-run]
 #
 # Non-destructive: it NEVER overwrites your CLAUDE.md / GEMINI.md content. It only
 # adds/refreshes the block between the marker comments, backs up anything it

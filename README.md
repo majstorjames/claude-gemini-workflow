@@ -19,16 +19,22 @@ Claude acts as architect/planner; a reviewer CLI (Gemini by default) double-chec
 
 ## Install
 
-From inside the target git repo:
+**1. Get the kit** — clone it once to a stable location outside any single project:
 
 ```bash
-bash /path/to/tools/claude-gemini-workflow/install.sh
+git clone https://github.com/majstorjames/claude-gemini-workflow ~/tools/claude-gemini-workflow
+# update later with:  git -C ~/tools/claude-gemini-workflow pull
 ```
 
-Preview first without writing anything:
+> The repo is currently **private**, so cloning requires access — authenticate with
+> `gh auth login`, or use the SSH URL `git@github.com:majstorjames/claude-gemini-workflow.git`.
+
+**2. Install into a repo** — from inside the git repo you want to add the workflow to:
 
 ```bash
-bash /path/to/tools/claude-gemini-workflow/install.sh --dry-run
+cd /path/to/your-repo
+bash ~/tools/claude-gemini-workflow/install.sh --dry-run   # preview — writes nothing
+bash ~/tools/claude-gemini-workflow/install.sh             # apply
 ```
 
 The installer is **non-destructive**:
@@ -42,18 +48,9 @@ The installer is **non-destructive**:
 ## Applying to other repositories
 
 The kit is self-contained: the installer targets **the git repo of your current directory** and
-reads its templates/hook from **its own folder**. So one copy of the kit can install into any
-number of repos.
-
-**Recommended — one central copy:** move or clone the kit to a stable location outside any single
-project (or make it its own git repo):
-
-```bash
-# one-time
-cp -R /path/to/tools/claude-gemini-workflow ~/tools/claude-gemini-workflow
-```
-
-Then, for **any** repo:
+reads its templates/hook from **its own folder**. So the single central clone from the Install
+step above can install into any number of repos — just `cd` into each one and run its
+`install.sh`:
 
 ```bash
 cd /path/to/other-repo
@@ -61,8 +58,14 @@ bash ~/tools/claude-gemini-workflow/install.sh --dry-run   # preview
 bash ~/tools/claude-gemini-workflow/install.sh             # apply
 ```
 
-**Alternative — vendored per repo:** copy the `claude-gemini-workflow/` folder into each repo
-(e.g. under `tools/`) and run its `install.sh` locally.
+**Alternative — vendored per repo:** clone the kit *into* a repo (e.g. under `tools/`) and run it
+locally, so the workflow travels with that project:
+
+```bash
+cd /path/to/other-repo
+git clone https://github.com/majstorjames/claude-gemini-workflow tools/claude-gemini-workflow
+bash tools/claude-gemini-workflow/install.sh
+```
 
 Each install is non-destructive and idempotent, and adds a `.gitignore` block for its own local
 artifacts automatically. After installing, remember to:
