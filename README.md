@@ -14,8 +14,10 @@ _plans_ and the _staged code_ before it lands.
    `docs/plans/GEMINI_FEEDBACK.md` (opening with a `**Status: ...**` line + numbered **Fix:**
    items).
 3. **Integrate** — Claude reads the feedback and folds it in before coding.
-4. **Commit gate** — on `git commit`, a pre-commit hook runs the reviewer over the staged diff.
-   `STATUS: REJECTED` aborts the commit with actionable feedback; Claude fixes and retries.
+4. **Commit gate** — on `git commit`, a pre-commit hook runs the reviewer over the staged diff and
+   prints a pass/fail banner: a green **✓ REVIEW PASSED** with an itemized checklist of what was
+   verified, or a red **✗ REVIEW FAILED** with actionable feedback. `STATUS: REJECTED` aborts the
+   commit; Claude fixes and retries. (Color shows only on an interactive terminal.)
 
 ## Install
 

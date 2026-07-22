@@ -46,8 +46,8 @@ PROMPT_FILE="$SCRATCH/prompt.txt"
   printf '%s\n' "Respond with EXACTLY one of these on the FIRST line:"
   printf '%s\n' "  STATUS: APPROVED"
   printf '%s\n' "  STATUS: REJECTED"
-  printf '%s\n' "On the SECOND line, ALWAYS give a one-line rationale that names the specific things you actually checked in this diff (e.g. files, functions, migrations, behaviors) -- this proves you engaged, and applies to APPROVED as much as REJECTED. Do not approve without stating what you verified."
-  printf '%s\n' "If REJECTED, follow the rationale with concise, actionable, file-anchored feedback on what to fix. Reject only for: correctness regressions introduced by this change, security issues in the changed lines, broken contracts (signatures, callers/callees, schemas) visible in the diff, or changed behavior with no corresponding test -- never for style nitpicks."
+  printf '%s\n' "After the STATUS line, ALWAYS list -- as separate bulleted lines each starting with '- ' -- the specific things you verified in this diff (e.g. files, functions, migrations, behaviors); give 2-5 bullets. This proves you engaged, and applies to APPROVED as much as REJECTED. Never approve without listing what you verified."
+  printf '%s\n' "If REJECTED, each bullet should name the problem and end with a concise, actionable, file-anchored fix. Reject only for: correctness regressions introduced by this change, security issues in the changed lines, broken contracts (signatures, callers/callees, schemas) visible in the diff, or changed behavior with no corresponding test -- never for style nitpicks."
   printf '%s\n' ""
   printf '%s\n' "=== PROJECT STANDARDS (GEMINI.md) ==="
   if [ -f "$ROOT/GEMINI.md" ]; then cat "$ROOT/GEMINI.md"; else printf '%s\n' "<none provided>"; fi
@@ -75,14 +75,64 @@ if ! REVIEW_OUTPUT="$("$REVIEWER_CMD" ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} < "$PR
   exit 0
 fi
 
-echo "" >&2
-echo "$REVIEW_OUTPUT" >&2
-echo "" >&2
+# --- render the verdict ------------------------------------------------------
+# Color only when stderr is an interactive terminal; plain text when the output
+# is captured (e.g. by the Claude agent) so no escape codes leak into logs.
+if [ -t 2 ]; then
+  C_GREEN=$'\033[32m'; C_RED=$'\033[31m'; C_YELLOW=$'\033[33m'
+  C_BOLD=$'\033[1m';   C_RESET=$'\033[0m'
+else
+  C_GREEN=""; C_RED=""; C_YELLOW=""; C_BOLD=""; C_RESET=""
+fi
+RULE="────────────────────────────────────────────"
+
+emit() { printf '%s\n' "$1" >&2; }
+
+# Everything the reviewer said except the STATUS line, blank lines dropped.
+DETAIL="$(printf '%s\n' "$REVIEW_OUTPUT" | grep -viE '^[[:space:]]*STATUS:' | grep -v '^[[:space:]]*$' || true)"
 
 # --- gate --------------------------------------------------------------------
-if [ "$REVIEW_MODE" = "block" ] && printf '%s' "$REVIEW_OUTPUT" | grep -q "STATUS: REJECTED"; then
-  echo "[cgw] Commit blocked (STATUS: REJECTED). Fix the issues above, or bypass with: git commit --no-verify" >&2
-  exit 1
+if printf '%s' "$REVIEW_OUTPUT" | grep -qiE 'STATUS:[[:space:]]*REJECTED'; then
+  emit ""
+  emit "${C_RED}${C_BOLD}${RULE}${C_RESET}"
+  emit "${C_RED}${C_BOLD} ✗ REVIEW FAILED — issues found${C_RESET}"
+  emit "${C_RED}${C_BOLD}${RULE}${C_RESET}"
+  if [ -n "$DETAIL" ]; then
+    printf '%s\n' "$DETAIL" | while IFS= read -r line; do
+      clean="$(printf '%s' "$line" | sed -E 's/^[[:space:]]*[-*][[:space:]]*//')"
+      emit "${C_RED} ✗${C_RESET} ${clean}"
+    done
+  else
+    emit "${C_RED} ✗${C_RESET} (no detail provided)"
+  fi
+  emit ""
+  if [ "$REVIEW_MODE" = "block" ]; then
+    emit "${C_RED}[cgw] Commit blocked. Fix the issues above, then re-commit — or bypass with: git commit --no-verify${C_RESET}"
+    exit 1
+  else
+    emit "${C_YELLOW}[cgw] warn mode — commit NOT blocked, but address the issues above.${C_RESET}"
+    exit 0
+  fi
+elif printf '%s' "$REVIEW_OUTPUT" | grep -qiE 'STATUS:[[:space:]]*APPROVED'; then
+  emit ""
+  emit "${C_GREEN}${C_BOLD}${RULE}${C_RESET}"
+  emit "${C_GREEN}${C_BOLD} ✓ REVIEW PASSED — commit allowed${C_RESET}"
+  emit "${C_GREEN}${C_BOLD}${RULE}${C_RESET}"
+  if [ -n "$DETAIL" ]; then
+    printf '%s\n' "$DETAIL" | while IFS= read -r line; do
+      clean="$(printf '%s' "$line" | sed -E 's/^[[:space:]]*[-*][[:space:]]*//')"
+      emit "${C_GREEN} ✓${C_RESET} ${clean}"
+    done
+  else
+    emit "${C_GREEN} ✓${C_RESET} (no detail provided)"
+  fi
+  emit ""
+  exit 0
+else
+  # Unrecognized / malformed verdict: fail open but make it visible.
+  emit ""
+  emit "${C_YELLOW}${C_BOLD} ⚠ [cgw] Review returned no clear STATUS — allowing commit.${C_RESET}"
+  emit "$REVIEW_OUTPUT"
+  emit ""
+  exit 0
 fi
-
-exit 0
