@@ -1,0 +1,8 @@
+# macOS
+.DS_Store
+
+# Per-repo config generated at install time (in target repos, not this kit)
+.claude-gemini-workflow.conf
+
+# Backup files created by install.sh in target repos
+*.bak

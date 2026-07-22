@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+#
+# claude-gemini-workflow pre-commit review gate
+# ---------------------------------------------
+# Runs a reviewer CLI over the staged diff. If the reviewer replies
+# "STATUS: REJECTED" (and REVIEW_MODE=block), the commit is aborted and the
+# feedback is printed for you (or the Claude agent) to act on.
+#
+# Bypass in an emergency:  git commit --no-verify
+#
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+
+# --- defaults (overridable by the repo-root config file) ---------------------
+REVIEWER_CMD="gemini"
+REVIEWER_MODEL=""   # empty -> use the reviewer CLI's own configured default
+REVIEW_MODE="block"
+
+CONF="$ROOT/.claude-gemini-workflow.conf"
+# shellcheck disable=SC1090
+[ -f "$CONF" ] && . "$CONF"
+
+# --- collect the staged diff -------------------------------------------------
+SCRATCH="$ROOT/.git/claude-gemini-workflow"
+mkdir -p "$SCRATCH"
+DIFF_FILE="$SCRATCH/staged.diff"
+git diff --cached --diff-filter=ACMR > "$DIFF_FILE"
+
+# Nothing substantive staged -> allow.
+[ -s "$DIFF_FILE" ] || exit 0
+
+# --- graceful degradation if the reviewer isn't installed --------------------
+if ! command -v "$REVIEWER_CMD" >/dev/null 2>&1; then
+  echo "[cgw] reviewer '$REVIEWER_CMD' not found on PATH — skipping review." >&2
+  exit 0
+fi
+
+# --- build the review prompt -------------------------------------------------
+# Assembled into a file (not a shell var) so large diffs never hit argv limits
+# and no quoting in GEMINI.md / the diff can break the script.
+PROMPT_FILE="$SCRATCH/prompt.txt"
+{
+  printf '%s\n' "You are the INDEPENDENT pre-commit reviewer for this repository -- a second, fresh pass whose job is to catch what the change's author normalized or overlooked. You see ONLY the staged diff below (no whole-repo context), so do NOT attempt architecture review -- judge only what the diff itself shows, against the project standards."
+  printf '%s\n' ""
+  printf '%s\n' "Respond with EXACTLY one of these on the first line:"
+  printf '%s\n' "  STATUS: APPROVED"
+  printf '%s\n' "  STATUS: REJECTED"
+  printf '%s\n' "If REJECTED, follow it with concise, actionable, file-anchored feedback on what to fix. Reject only for: correctness regressions introduced by this change, security issues in the changed lines, broken contracts (signatures, callers/callees, schemas) visible in the diff, or changed behavior with no corresponding test -- never for style nitpicks."
+  printf '%s\n' ""
+  printf '%s\n' "=== PROJECT STANDARDS (GEMINI.md) ==="
+  if [ -f "$ROOT/GEMINI.md" ]; then cat "$ROOT/GEMINI.md"; else printf '%s\n' "<none provided>"; fi
+  printf '%s\n' ""
+  printf '%s\n' "=== STAGED DIFF ==="
+  cat "$DIFF_FILE"
+} > "$PROMPT_FILE"
+
+# Only pass -m when a model is pinned; otherwise let the CLI use its own default.
+MODEL_ARGS=()
+[ -n "$REVIEWER_MODEL" ] && MODEL_ARGS=(-m "$REVIEWER_MODEL")
+
+if [ -n "$REVIEWER_MODEL" ]; then
+  echo "[cgw] Reviewing staged changes with $REVIEWER_CMD ($REVIEWER_MODEL)..." >&2
+else
+  echo "[cgw] Reviewing staged changes with $REVIEWER_CMD (CLI default model)..." >&2
+fi
+
+# Feed the prompt via stdin (robust for large diffs vs. argv length limits).
+# If the reviewer invocation itself errors, fail open (allow the commit).
+# Guarded array expansion: safe when MODEL_ARGS is empty under `set -u` on bash 3.2 (macOS).
+if ! REVIEW_OUTPUT="$("$REVIEWER_CMD" ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} < "$PROMPT_FILE" 2>&1)"; then
+  echo "[cgw] reviewer invocation failed — allowing commit." >&2
+  echo "$REVIEW_OUTPUT" >&2
+  exit 0
+fi
+
+echo "" >&2
+echo "$REVIEW_OUTPUT" >&2
+echo "" >&2
+
+# --- gate --------------------------------------------------------------------
+if [ "$REVIEW_MODE" = "block" ] && printf '%s' "$REVIEW_OUTPUT" | grep -q "STATUS: REJECTED"; then
+  echo "[cgw] Commit blocked (STATUS: REJECTED). Fix the issues above, or bypass with: git commit --no-verify" >&2
+  exit 1
+fi
+
+exit 0
