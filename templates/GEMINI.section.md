@@ -31,7 +31,9 @@ architecture review — judge only what the diff itself shows:
 - Broken contracts (signatures, callers/callees, schemas) visible in the diff.
 - Changed behavior with no corresponding test.
 
-Output EXACTLY `STATUS: APPROVED` if the change is sound. Otherwise output `STATUS: REJECTED`
-followed by concise, actionable, file-anchored feedback. Reject only for the above — never for
-style nitpicks.
+Put `STATUS: APPROVED` or `STATUS: REJECTED` on the first line. On the second line, ALWAYS give a
+one-line rationale naming what you actually checked in the diff (files, functions, migrations,
+behaviors) — this applies to APPROVED as much as REJECTED, so a pass is never a silent rubber
+stamp. If REJECTED, follow with concise, actionable, file-anchored feedback. Reject only for the
+above — never for style nitpicks.
 <!-- claude-gemini-workflow:end -->

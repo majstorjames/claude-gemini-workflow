@@ -43,10 +43,11 @@ PROMPT_FILE="$SCRATCH/prompt.txt"
 {
   printf '%s\n' "You are the INDEPENDENT pre-commit reviewer for this repository -- a second, fresh pass whose job is to catch what the change's author normalized or overlooked. You see ONLY the staged diff below (no whole-repo context), so do NOT attempt architecture review -- judge only what the diff itself shows, against the project standards."
   printf '%s\n' ""
-  printf '%s\n' "Respond with EXACTLY one of these on the first line:"
+  printf '%s\n' "Respond with EXACTLY one of these on the FIRST line:"
   printf '%s\n' "  STATUS: APPROVED"
   printf '%s\n' "  STATUS: REJECTED"
-  printf '%s\n' "If REJECTED, follow it with concise, actionable, file-anchored feedback on what to fix. Reject only for: correctness regressions introduced by this change, security issues in the changed lines, broken contracts (signatures, callers/callees, schemas) visible in the diff, or changed behavior with no corresponding test -- never for style nitpicks."
+  printf '%s\n' "On the SECOND line, ALWAYS give a one-line rationale that names the specific things you actually checked in this diff (e.g. files, functions, migrations, behaviors) -- this proves you engaged, and applies to APPROVED as much as REJECTED. Do not approve without stating what you verified."
+  printf '%s\n' "If REJECTED, follow the rationale with concise, actionable, file-anchored feedback on what to fix. Reject only for: correctness regressions introduced by this change, security issues in the changed lines, broken contracts (signatures, callers/callees, schemas) visible in the diff, or changed behavior with no corresponding test -- never for style nitpicks."
   printf '%s\n' ""
   printf '%s\n' "=== PROJECT STANDARDS (GEMINI.md) ==="
   if [ -f "$ROOT/GEMINI.md" ]; then cat "$ROOT/GEMINI.md"; else printf '%s\n' "<none provided>"; fi
