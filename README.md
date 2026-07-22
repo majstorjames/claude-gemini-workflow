@@ -2,13 +2,13 @@
 
 A portable, drop-in kit for the **"Claude plans → Gemini reviews"** collaboration loop.
 Claude acts as architect/planner; a reviewer CLI (Gemini by default) double-checks both the
-*plans* and the *staged code* before it lands.
+_plans_ and the _staged code_ before it lands.
 
 ## The loop
 
 1. **Plan** — Claude writes an implementation plan to `docs/plans/<FEATURE>_PLAN.md` opening
    with `## Status: READY FOR GEMINI REVIEW`, then notifies you.
-2. **Review** — Gemini verifies the plan against the real codebase as an *independent* reviewer,
+2. **Review** — Gemini verifies the plan against the real codebase as an _independent_ reviewer,
    focusing on what the author is blind to — architecture/system fit, requirement & edge-case
    gaps, integration/contract compatibility, and simpler alternatives — and writes critiques to
    `docs/plans/GEMINI_FEEDBACK.md` (opening with a `**Status: ...**` line + numbered **Fix:**
@@ -26,9 +26,6 @@ git clone https://github.com/majstorjames/claude-gemini-workflow ~/tools/claude-
 # update later with:  git -C ~/tools/claude-gemini-workflow pull
 ```
 
-> The repo is currently **private**, so cloning requires access — authenticate with
-> `gh auth login`, or use the SSH URL `git@github.com:majstorjames/claude-gemini-workflow.git`.
-
 **2. Install into a repo** — from inside the git repo you want to add the workflow to:
 
 ```bash
@@ -38,6 +35,7 @@ bash ~/tools/claude-gemini-workflow/install.sh             # apply
 ```
 
 The installer is **non-destructive**:
+
 - Your existing `CLAUDE.md` / `GEMINI.md` are never overwritten — the scaffold is injected
   between `<!-- claude-gemini-workflow:start -->` / `:end` markers (replaced on re-run, appended
   if absent). Originals are backed up to `*.bak`.
@@ -58,7 +56,7 @@ bash ~/tools/claude-gemini-workflow/install.sh --dry-run   # preview
 bash ~/tools/claude-gemini-workflow/install.sh             # apply
 ```
 
-**Alternative — vendored per repo:** clone the kit *into* a repo (e.g. under `tools/`) and run it
+**Alternative — vendored per repo:** clone the kit _into_ a repo (e.g. under `tools/`) and run it
 locally, so the workflow travels with that project:
 
 ```bash
@@ -69,6 +67,7 @@ bash tools/claude-gemini-workflow/install.sh
 
 Each install is non-destructive and idempotent, and adds a `.gitignore` block for its own local
 artifacts automatically. After installing, remember to:
+
 - edit `.claude-gemini-workflow.conf` for the reviewer CLI / model / mode;
 - ensure the reviewer CLI (e.g. `gemini`) is installed **and authenticated** on that machine;
 - bypass a review with `git commit --no-verify`; undo file edits via the `*.bak` files.
@@ -112,3 +111,7 @@ templates/
   GEMINI.section.md            reviewer scaffold (Gemini side)
   docs/plans/*.template.md     plan + feedback skeletons
 ```
+
+## License
+
+[MIT](LICENSE) — free to use, modify, and distribute.
