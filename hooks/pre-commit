@@ -66,16 +66,7 @@ else
   echo "[cgw] Reviewing staged changes with $REVIEWER_CMD (CLI default model)..." >&2
 fi
 
-# Feed the prompt via stdin (robust for large diffs vs. argv length limits).
-# If the reviewer invocation itself errors, fail open (allow the commit).
-# Guarded array expansion: safe when MODEL_ARGS is empty under `set -u` on bash 3.2 (macOS).
-if ! REVIEW_OUTPUT="$("$REVIEWER_CMD" ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} < "$PROMPT_FILE" 2>&1)"; then
-  echo "[cgw] reviewer invocation failed — allowing commit." >&2
-  echo "$REVIEW_OUTPUT" >&2
-  exit 0
-fi
-
-# --- render the verdict ------------------------------------------------------
+# --- output helpers ----------------------------------------------------------
 # Color only when stderr is an interactive terminal; plain text when the output
 # is captured (e.g. by the Claude agent) so no escape codes leak into logs.
 if [ -t 2 ]; then
@@ -88,6 +79,30 @@ RULE="────────────────────────�
 
 emit() { printf '%s\n' "$1" >&2; }
 
+# Feed the prompt via stdin (robust for large diffs vs. argv length limits).
+# Capture stdout (the verdict) and stderr SEPARATELY: reviewer CLIs print
+# incidental diagnostics to stderr (e.g. "Ripgrep is not available...") that must
+# not pollute the parsed verdict bullets. stderr is surfaced only on failure.
+# If the reviewer invocation itself errors, fail open (allow the commit) but say
+# so LOUDLY — an unreviewed commit must never look like a real pass.
+# Guarded array expansion: safe when MODEL_ARGS is empty under `set -u` on bash 3.2 (macOS).
+ERR_FILE="$SCRATCH/review.err"
+if ! REVIEW_OUTPUT="$("$REVIEWER_CMD" ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} < "$PROMPT_FILE" 2>"$ERR_FILE")"; then
+  emit ""
+  emit "${C_YELLOW}${C_BOLD}${RULE}${C_RESET}"
+  emit "${C_YELLOW}${C_BOLD} ⚠ REVIEW DID NOT RUN — commit allowed (UNREVIEWED)${C_RESET}"
+  emit "${C_YELLOW}${C_BOLD}${RULE}${C_RESET}"
+  [ -n "$REVIEW_OUTPUT" ] && emit "$REVIEW_OUTPUT"
+  emit "$(cat "$ERR_FILE" 2>/dev/null || true)"
+  emit ""
+  emit "${C_YELLOW}[cgw] The reviewer CLI errored, so this commit was NOT reviewed. Common cause: Gemini"
+  emit "      needs to trust this folder — add 'export GEMINI_CLI_TRUST_WORKSPACE=true' to"
+  emit "      .claude-gemini-workflow.conf, or run 'gemini' here once to trust it.${C_RESET}"
+  emit ""
+  exit 0
+fi
+
+# --- render the verdict ------------------------------------------------------
 # Everything the reviewer said except the STATUS line, blank lines dropped.
 DETAIL="$(printf '%s\n' "$REVIEW_OUTPUT" | grep -viE '^[[:space:]]*STATUS:' | grep -v '^[[:space:]]*$' || true)"
 
