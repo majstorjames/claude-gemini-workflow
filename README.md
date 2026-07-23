@@ -132,9 +132,12 @@ through). Fix it either way:
   Comment the line out to opt out.
 - **Interactive:** run `gemini` in the repo once and accept the trust prompt.
 
-> **Upgrading an existing install:** `git pull` the kit and re-run `install.sh` to refresh the
-> hook, but your `.claude-gemini-workflow.conf` is **left untouched** — add
-> `export GEMINI_CLI_TRUST_WORKSPACE=true` to it by hand (it's git-ignored, so it stays local).
+> **Upgrading an existing install:** `git pull` the kit and re-run `install.sh`. It refreshes the
+> hooks and the marked `CLAUDE.md` / `GEMINI.md` blocks, and **appends any config keys the kit has
+> gained** (e.g. `PLAN_REVIEW_MODE`) to your `.claude-gemini-workflow.conf` — backing it up to
+> `.claude-gemini-workflow.conf.bak` first. Your existing **values are never changed** (a key
+> that's already set, even if commented out, is left alone), so you only edit a value when you want
+> to override its default.
 
 ## Bypass
 

@@ -161,15 +161,45 @@ else
   fi
 fi
 
-# 4) config file (create-if-missing)
+# 4) config file (create-if-missing; on update, append any NEW keys the example
+#    has gained without touching the user's existing values). This lets a kit
+#    upgrade surface new knobs (e.g. PLAN_REVIEW_MODE) in an existing .conf.
 CONF="$ROOT/.claude-gemini-workflow.conf"
-if [ -f "$CONF" ]; then
-  echo "  skip .claude-gemini-workflow.conf (exists)"
-elif [ "$DRY_RUN" = 1 ]; then
-  echo "  would create .claude-gemini-workflow.conf"
+EXAMPLE="$SRC_DIR/workflow.config.example.sh"
+if [ ! -f "$CONF" ]; then
+  if [ "$DRY_RUN" = 1 ]; then
+    echo "  would create .claude-gemini-workflow.conf"
+  else
+    cp "$EXAMPLE" "$CONF"
+    echo "  created .claude-gemini-workflow.conf"
+  fi
 else
-  cp "$SRC_DIR/workflow.config.example.sh" "$CONF"
-  echo "  created .claude-gemini-workflow.conf"
+  # Existing conf: find keys the example defines but this conf lacks. A
+  # commented-out assignment counts as "present" so we never resurrect a key the
+  # user deliberately opted out of (e.g. a commented trust flag).
+  MISSING=""
+  for k in $(grep -oE '^(export[[:space:]]+)?[A-Z_][A-Z0-9_]*=' "$EXAMPLE" | sed -E 's/^export[[:space:]]+//; s/=$//'); do
+    grep -qE "^[[:space:]]*#?[[:space:]]*(export[[:space:]]+)?$k=" "$CONF" || MISSING="$MISSING $k"
+  done
+  MISSING="${MISSING# }"
+
+  if [ -z "$MISSING" ]; then
+    echo "  skip .claude-gemini-workflow.conf (up to date)"
+  elif [ "$DRY_RUN" = 1 ]; then
+    echo "  would add missing config keys to .claude-gemini-workflow.conf: $MISSING"
+  else
+    cp "$CONF" "$CONF.bak"
+    {
+      printf '\n# --- added by claude-gemini-workflow upgrade (edit values as needed) ---\n'
+      for k in $MISSING; do
+        # Print the key's whole group (comment block + assignment) from the
+        # example. Paragraph mode (RS='') works because the example separates
+        # one key group per blank-line-delimited block.
+        awk -v RS='' -v key="$k" '$0 ~ "(^|\n)(export[[:space:]]+)?" key "=" { print; print "" }' "$EXAMPLE"
+      done
+    } >> "$CONF"
+    echo "  updated .claude-gemini-workflow.conf (added: $MISSING; backup: .claude-gemini-workflow.conf.bak)"
+  fi
 fi
 
 # 5) scratch dir (under .git, so it's never committed)
@@ -181,11 +211,12 @@ GI_MARKER="# claude-gemini-workflow"
 if [ -f "$GITIGNORE" ] && grep -qF "$GI_MARKER" "$GITIGNORE"; then
   echo "  skip .gitignore (already has claude-gemini-workflow block)"
 elif [ "$DRY_RUN" = 1 ]; then
-  echo "  would add .gitignore block: .claude-gemini-workflow.conf, CLAUDE.md.bak, GEMINI.md.bak, .claude/settings.local.json*, .claude/hooks/plan-review"
+  echo "  would add .gitignore block: .claude-gemini-workflow.conf*, CLAUDE.md.bak, GEMINI.md.bak, .claude/settings.local.json*, .claude/hooks/plan-review"
 else
   {
     printf '\n%s (local install artifacts)\n' "$GI_MARKER"
     printf '%s\n' ".claude-gemini-workflow.conf"
+    printf '%s\n' ".claude-gemini-workflow.conf.bak"
     printf '%s\n' "CLAUDE.md.bak"
     printf '%s\n' "GEMINI.md.bak"
     printf '%s\n' ".claude/settings.local.json"
