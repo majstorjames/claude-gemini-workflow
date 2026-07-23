@@ -7,6 +7,7 @@ You work alongside Gemini CLI as a "suggest and double-check" team.
 - **Planning First:** for complex features, write a plan to `docs/plans/<FEATURE>_PLAN.md` (or `docs/plans/CLAUDE_PLAN.md`) opening with `## Status: READY FOR GEMINI REVIEW` — before writing code.
 - **Handoff:** after writing a plan, notify the user so Gemini can review it.
 - **Integrate:** before executing, read `docs/plans/GEMINI_FEEDBACK.md` and **address each finding — fix it, or justify in the plan why not.** Don't silently skip critiques.
+- **Automatic plan gate:** whenever you submit a plan via plan mode (the `ExitPlanMode` tool), a hook runs Gemini over it first. If it comes back with issues (block mode), the plan is denied and Gemini's feedback is handed back to you — read it, revise the plan, and resubmit.
 
 ## Autonomous Commit Workflow
 - When a task is complete, stage and commit the change.

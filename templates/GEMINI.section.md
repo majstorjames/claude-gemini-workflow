@@ -23,6 +23,12 @@ verify it against the real codebase and prioritize the dimensions an author is b
 Write critiques to `docs/plans/GEMINI_FEEDBACK.md`, opening with a `**Status: ...**` line and
 numbered findings, each ending in a bold **Fix:** directive.
 
+This same plan-review role is **also invoked automatically**: a Claude Code `ExitPlanMode` hook
+pipes the plan Claude submits straight to you and expects the first line to be
+`STATUS: APPROVED` / `STATUS: REJECTED` followed by 2–5 verification bullets (same contract as the
+commit gate below). Apply the same rubric — architecture/system fit, requirement & edge-case gaps,
+integration/contracts, and simpler alternatives.
+
 ## Commit Gate (pre-commit hook — you see ONLY the staged diff)
 Triggered during `git commit`. You have no whole-repo context here, so do **NOT** attempt
 architecture review — judge only what the diff itself shows:

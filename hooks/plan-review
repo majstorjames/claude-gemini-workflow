@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+#
+# claude-gemini-workflow plan-review gate (Claude Code hook)
+# ---------------------------------------------------------
+# The commit-gate's sibling: where hooks/pre-commit reviews the STAGED DIFF at
+# `git commit`, this reviews the PLAN Claude submits via the ExitPlanMode tool.
+# It is registered as a Claude Code PreToolUse hook (matcher: ExitPlanMode) in
+# .claude/settings.json by install.sh.
+#
+# Claude Code invokes this with the hook payload as JSON on stdin. We pull the
+# plan text out, run the reviewer CLI (default `gemini`) over it, and:
+#   * PLAN_REVIEW_MODE=block + STATUS: REJECTED -> exit 2, printing the reviewer's
+#     feedback on stderr. For a PreToolUse hook, a non-zero (2) exit BLOCKS the
+#     tool call and feeds stderr back to Claude, so it revises the plan before the
+#     user ever sees it. (JSON-on-stdout with hookSpecificOutput.permissionDecision
+#     "deny" is the documented alternative; exit 2 + stderr is used here because
+#     it needs no JSON assembly and reliably surfaces the reason to Claude.)
+#   * warn mode, APPROVED, or any ambiguous/error case -> exit 0 (allow), printing
+#     the review for the user. Like the commit gate, this FAILS OPEN but LOUDLY —
+#     an unreviewed plan must never masquerade as a real pass.
+#
+# Bypass: set PLAN_REVIEW_MODE=warn in .claude-gemini-workflow.conf, or remove the
+# hook entry from .claude/settings.json.
+#
+# NOTE: all human-readable output goes to stderr. For a hook, stdout is a reserved
+# channel (structured JSON) — never print prose there.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+# --- defaults (overridable by the repo-root config file) ---------------------
+REVIEWER_CMD="gemini"
+REVIEWER_MODEL=""       # empty -> use the reviewer CLI's own configured default
+PLAN_REVIEW_MODE="block"
+
+CONF="$ROOT/.claude-gemini-workflow.conf"
+# shellcheck disable=SC1090
+[ -f "$CONF" ] && . "$CONF"
+
+# --- output helpers ----------------------------------------------------------
+# Color only when stderr is an interactive terminal; plain text otherwise so no
+# escape codes leak into the transcript Claude Code captures.
+if [ -t 2 ]; then
+  C_GREEN=$'\033[32m'; C_RED=$'\033[31m'; C_YELLOW=$'\033[33m'
+  C_BOLD=$'\033[1m';   C_RESET=$'\033[0m'
+else
+  C_GREEN=""; C_RED=""; C_YELLOW=""; C_BOLD=""; C_RESET=""
+fi
+RULE="────────────────────────────────────────────"
+emit() { printf '%s\n' "$1" >&2; }
+
+# --- read the hook payload and extract the plan text -------------------------
+PAYLOAD="$(cat)"
+
+# The exact ExitPlanMode payload schema isn't formally documented, so probe the
+# known/candidate field paths for the plan markdown. If jq is missing or none of
+# the paths yield text, fail OPEN (allow) with a loud note rather than blocking a
+# plan we couldn't read.
+PLAN=""
+if command -v jq >/dev/null 2>&1; then
+  PLAN="$(printf '%s' "$PAYLOAD" | jq -r '
+    .tool_input.plan // .tool_input.plan_content // .tool_input.text // .plan // empty
+  ' 2>/dev/null || true)"
+fi
+
+if [ -z "$PLAN" ]; then
+  emit ""
+  emit "${C_YELLOW}${C_BOLD} ⚠ [cgw] plan-review: couldn't read the plan text from the hook payload — allowing.${C_RESET}"
+  if ! command -v jq >/dev/null 2>&1; then
+    emit "${C_YELLOW}      'jq' is not on PATH; it is required to parse the ExitPlanMode payload.${C_RESET}"
+  fi
+  emit ""
+  exit 0
+fi
+
+# --- graceful degradation if the reviewer isn't installed --------------------
+if ! command -v "$REVIEWER_CMD" >/dev/null 2>&1; then
+  emit "[cgw] reviewer '$REVIEWER_CMD' not found on PATH — skipping plan review."
+  exit 0
+fi
+
+# --- build the review prompt -------------------------------------------------
+# Assembled into a file (not a shell var) so large plans never hit argv limits
+# and no quoting in GEMINI.md / the plan can break the script.
+SCRATCH="$ROOT/.git/claude-gemini-workflow"
+mkdir -p "$SCRATCH" 2>/dev/null || SCRATCH="$(mktemp -d)"
+PROMPT_FILE="$SCRATCH/plan-prompt.txt"
+{
+  printf '%s\n' "You are the INDEPENDENT plan reviewer for this repository -- a second, skeptical pass over an implementation plan BEFORE any code is written. Unlike the commit gate, you HAVE whole-repo context: verify the plan against the ACTUAL codebase (read/grep/glob) rather than trusting the plan's own description. Prioritize what the plan's author is structurally blind to:"
+  printf '%s\n' "  - Architecture & system fit: does it cohere with existing patterns, or bolt on a parallel/conflicting one?"
+  printf '%s\n' "  - Requirement & scope gaps: missing edge cases, error/failure/rollback paths, unstated assumptions."
+  printf '%s\n' "  - Integration & contracts: API/schema/migration/backward-compat with the rest of the repo."
+  printf '%s\n' "  - Simplicity: is there a materially simpler approach that meets the same requirement?"
+  printf '%s\n' "Correctness & security stay in scope, but don't stop there."
+  printf '%s\n' ""
+  printf '%s\n' "Respond with EXACTLY one of these on the FIRST line:"
+  printf '%s\n' "  STATUS: APPROVED"
+  printf '%s\n' "  STATUS: REJECTED"
+  printf '%s\n' "After the STATUS line, ALWAYS list -- as separate bulleted lines each starting with '- ' -- the specific things you verified against the codebase (files, functions, contracts, assumptions); give 2-5 bullets. This proves you engaged, and applies to APPROVED as much as REJECTED. Never approve without listing what you verified."
+  printf '%s\n' "If REJECTED, each bullet should name the problem and end with a concise, actionable, file-anchored fix. Reject only for material issues (architecture/fit, missing requirements or edge cases, broken integration/contracts, correctness/security, or a much simpler alternative) -- never for style nitpicks or wording."
+  printf '%s\n' ""
+  printf '%s\n' "=== PROJECT STANDARDS (GEMINI.md) ==="
+  if [ -f "$ROOT/GEMINI.md" ]; then cat "$ROOT/GEMINI.md"; else printf '%s\n' "<none provided>"; fi
+  printf '%s\n' ""
+  printf '%s\n' "=== PLAN UNDER REVIEW ==="
+  printf '%s\n' "$PLAN"
+} > "$PROMPT_FILE"
+
+# Only pass -m when a model is pinned; otherwise let the CLI use its own default.
+MODEL_ARGS=()
+[ -n "$REVIEWER_MODEL" ] && MODEL_ARGS=(-m "$REVIEWER_MODEL")
+
+if [ -n "$REVIEWER_MODEL" ]; then
+  emit "[cgw] Reviewing plan with $REVIEWER_CMD ($REVIEWER_MODEL)..."
+else
+  emit "[cgw] Reviewing plan with $REVIEWER_CMD (CLI default model)..."
+fi
+
+# Feed the prompt via stdin (robust for large plans vs. argv length limits).
+# Capture stdout (the verdict) and stderr SEPARATELY: reviewer CLIs print
+# incidental diagnostics to stderr (e.g. "Ripgrep is not available...") that must
+# not pollute the parsed verdict bullets. stderr is surfaced only on failure.
+# If the reviewer invocation itself errors, fail open (allow) but say so LOUDLY.
+# Guarded array expansion: safe when MODEL_ARGS is empty under `set -u` on bash 3.2 (macOS).
+ERR_FILE="$SCRATCH/plan-review.err"
+if ! REVIEW_OUTPUT="$("$REVIEWER_CMD" ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} < "$PROMPT_FILE" 2>"$ERR_FILE")"; then
+  emit ""
+  emit "${C_YELLOW}${C_BOLD}${RULE}${C_RESET}"
+  emit "${C_YELLOW}${C_BOLD} ⚠ PLAN REVIEW DID NOT RUN — plan allowed (UNREVIEWED)${C_RESET}"
+  emit "${C_YELLOW}${C_BOLD}${RULE}${C_RESET}"
+  [ -n "$REVIEW_OUTPUT" ] && emit "$REVIEW_OUTPUT"
+  emit "$(cat "$ERR_FILE" 2>/dev/null || true)"
+  emit ""
+  emit "${C_YELLOW}[cgw] The reviewer CLI errored, so this plan was NOT reviewed. Common cause: Gemini"
+  emit "      needs to trust this folder — add 'export GEMINI_CLI_TRUST_WORKSPACE=true' to"
+  emit "      .claude-gemini-workflow.conf, or run 'gemini' here once to trust it.${C_RESET}"
+  emit ""
+  exit 0
+fi
+
+# --- render the verdict ------------------------------------------------------
+# Everything the reviewer said except the STATUS line, blank lines dropped.
+DETAIL="$(printf '%s\n' "$REVIEW_OUTPUT" | grep -viE '^[[:space:]]*STATUS:' | grep -v '^[[:space:]]*$' || true)"
+
+# --- gate --------------------------------------------------------------------
+if printf '%s' "$REVIEW_OUTPUT" | grep -qiE 'STATUS:[[:space:]]*REJECTED'; then
+  emit ""
+  emit "${C_RED}${C_BOLD}${RULE}${C_RESET}"
+  emit "${C_RED}${C_BOLD} ✗ PLAN REVIEW FAILED — issues found${C_RESET}"
+  emit "${C_RED}${C_BOLD}${RULE}${C_RESET}"
+  if [ -n "$DETAIL" ]; then
+    printf '%s\n' "$DETAIL" | while IFS= read -r line; do
+      clean="$(printf '%s' "$line" | sed -E 's/^[[:space:]]*[-*][[:space:]]*//')"
+      emit "${C_RED} ✗${C_RESET} ${clean}"
+    done
+  else
+    emit "${C_RED} ✗${C_RESET} (no detail provided)"
+  fi
+  emit ""
+  if [ "$PLAN_REVIEW_MODE" = "block" ]; then
+    emit "${C_RED}[cgw] Plan blocked. Address the issues above and revise the plan, then resubmit.${C_RESET}"
+    # Exit 2 => PreToolUse hook blocks the ExitPlanMode call; stderr is fed back to Claude.
+    exit 2
+  else
+    emit "${C_YELLOW}[cgw] warn mode — plan NOT blocked, but address the issues above.${C_RESET}"
+    exit 0
+  fi
+elif printf '%s' "$REVIEW_OUTPUT" | grep -qiE 'STATUS:[[:space:]]*APPROVED'; then
+  emit ""
+  emit "${C_GREEN}${C_BOLD}${RULE}${C_RESET}"
+  emit "${C_GREEN}${C_BOLD} ✓ PLAN REVIEW PASSED${C_RESET}"
+  emit "${C_GREEN}${C_BOLD}${RULE}${C_RESET}"
+  if [ -n "$DETAIL" ]; then
+    printf '%s\n' "$DETAIL" | while IFS= read -r line; do
+      clean="$(printf '%s' "$line" | sed -E 's/^[[:space:]]*[-*][[:space:]]*//')"
+      emit "${C_GREEN} ✓${C_RESET} ${clean}"
+    done
+  else
+    emit "${C_GREEN} ✓${C_RESET} (no detail provided)"
+  fi
+  emit ""
+  exit 0
+else
+  # Unrecognized / malformed verdict: fail open but make it visible.
+  emit ""
+  emit "${C_YELLOW}${C_BOLD} ⚠ [cgw] Plan review returned no clear STATUS — allowing plan.${C_RESET}"
+  emit "$REVIEW_OUTPUT"
+  emit ""
+  exit 0
+fi
