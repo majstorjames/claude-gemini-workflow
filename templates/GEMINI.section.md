@@ -42,5 +42,6 @@ separate bulleted lines each starting with `- ` — the specific things you veri
 (files, functions, migrations, behaviors); give 2–5 bullets. This applies to APPROVED as much as
 REJECTED, so a pass is never a silent rubber stamp. If REJECTED, each bullet names the problem and
 ends with a concise, actionable, file-anchored fix. Reject only for the above — never for style
-nitpicks.
+nitpicks. Findings may be adjudicated cold by an arbiter agent that did not write the code, so each
+finding must be specific and evidence-anchored enough to be judged without conversation context.
 <!-- claude-gemini-workflow:end -->

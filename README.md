@@ -25,7 +25,25 @@ remembers to run it:
 - **Commit gate** — on `git commit`, a pre-commit hook runs the reviewer over the staged diff and
   prints a pass/fail banner: a green **✓ REVIEW PASSED** with an itemized checklist of what was
   verified, or a red **✗ REVIEW FAILED** with actionable feedback. `STATUS: REJECTED` aborts the
-  commit; Claude fixes and retries. (Color shows only on an interactive terminal.)
+  commit; Claude fixes and retries — at most twice, then it stops and hands everything to you
+  rather than looping. (Color shows only on an interactive terminal.)
+
+**Optional — arbitration.** A rejected gate doesn't mean the reviewer was right. If the repo has a
+`.claude/agents/gate-arbiter.md` agent (the installer seeds one), Claude routes the findings there
+first. The arbiter judges each finding **cold** — it didn't write the code and has no conversation
+context — against the diff and the repo, and returns a per-finding verdict:
+
+- **VALID** → Claude fixes it, using the arbiter's precise fix description.
+- **INVALID** → dismissed, with the evidence that refutes it.
+- **UNCERTAIN** → **escalated to you**, with both the reviewer's claim and the arbiter's reasoning.
+
+The template carries an **undismissable concerns** placeholder: fill it with your repo's critical
+domains (data integrity, auth, money, migrations, public contracts — whatever applies), and
+findings touching them can only be fixed or escalated, never dismissed. Findings are classified by
+practical effect rather than wording, and ties break toward escalation. If the repo keeps a
+`decisions.md` at its root, the arbiter reads it first and won't re-escalate what you've already
+ruled on. This is why the reviewer scaffold insists each finding be specific and evidence-anchored:
+it has to survive being judged by someone who wasn't there.
 
 ## Install
 
@@ -51,6 +69,8 @@ The installer is **non-destructive**:
   if absent). Originals are backed up to `*.bak`.
 - Plan templates, the config file, and any pre-existing `pre-commit` hook are backed up / only
   created if missing.
+- `.claude/agents/gate-arbiter.md` is created only if absent — an existing one is left completely
+  alone, so the concerns you wrote into it survive every upgrade.
 - Re-running is idempotent.
 
 ## Applying to other repositories
@@ -81,7 +101,10 @@ artifacts automatically. After installing, remember to:
 - edit `.claude-gemini-workflow.conf` for the reviewer CLI / model / mode;
 - ensure the reviewer CLI (e.g. `gemini`) is installed, **authenticated**, and — for Gemini —
   able to **trust this folder** (see [Prerequisites & trust](#prerequisites--trust));
-- bypass a review with `git commit --no-verify`; undo file edits via the `*.bak` files.
+- fill in the **undismissable concerns** placeholder in `.claude/agents/gate-arbiter.md` with your
+  repo's critical domains (the installer reminds you when it creates the file);
+- undo file edits via the `*.bak` files; bypass a review with `git commit --no-verify` (see
+  [Bypass](#bypass)).
 
 The installer also **checks for the reviewer CLI** at the end. If `gemini` is missing it offers
 to install it (`npm install -g @google/gemini-cli`); pass `--yes` to auto-confirm in
@@ -145,6 +168,11 @@ through). Fix it either way:
 git commit --no-verify                         # skip the commit gate for one commit
 ```
 
+This is a **user-authorized** escape hatch, not an agent one: the Claude scaffold instructs Claude
+never to reach for `--no-verify` on its own — only when you explicitly tell it to in that session.
+A gate Claude can silently skip is not a gate. When Claude can't get past the reviewer, the
+intended outcome is escalation to you, not a bypass.
+
 For the **plan gate**: set `PLAN_REVIEW_MODE="warn"` in `.claude-gemini-workflow.conf` to make it
 review-only, or remove the `ExitPlanMode` entry from `.claude/settings.local.json` to disable it.
 
@@ -152,7 +180,9 @@ review-only, or remove the `ExitPlanMode` entry from `.claude/settings.local.jso
 
 Restore the `*.bak` files, delete `.claude-gemini-workflow.conf`, and remove
 `.git/hooks/pre-commit` (or restore `pre-commit.bak`). For the plan gate, remove
-`.claude/hooks/plan-review` and the `ExitPlanMode` entry from `.claude/settings.local.json`.
+`.claude/hooks/plan-review` and the `ExitPlanMode` entry from `.claude/settings.local.json`. For
+arbitration, delete `.claude/agents/gate-arbiter.md` — with no arbiter present, Claude falls back
+to reading the reviewer's feedback directly.
 
 ## Contents
 
@@ -164,6 +194,7 @@ hooks/plan-review              the plan review-gate hook (Claude Code ExitPlanMo
 templates/
   CLAUDE.section.md            planner scaffold (Claude side)
   GEMINI.section.md            reviewer scaffold (Gemini side)
+  agents/gate-arbiter.template.md  arbiter agent that adjudicates failed-gate findings
   docs/plans/*.template.md     plan + feedback skeletons
 ```
 

@@ -12,7 +12,9 @@ You work alongside Gemini CLI as a "suggest and double-check" team.
 ## Autonomous Commit Workflow
 - When a task is complete, stage and commit the change.
 - A pre-commit hook runs the reviewer CLI (default `gemini`, using the CLI's configured model) over the staged diff as a quality gate.
-- On `STATUS: REJECTED`, read the terminal feedback, fix the issues, and retry the commit until it passes. Bypass in emergencies with `git commit --no-verify`.
+- On `STATUS: REJECTED`: if the repo defines a gate-arbiter agent (`.claude/agents/gate-arbiter.md`), pass the staged diff and the findings to it and act on its verdicts — fix VALID findings via the implementer, present ESCALATE findings to the user with both the reviewer's claim and the arbiter's reasoning, and append user rulings to the escalation ledger if the repo keeps one. Otherwise, read the feedback, fix the issues, and retry.
+- Maximum two fix attempts. If the hook still fails on the third try, stop and escalate everything to the user rather than looping.
+- Never bypass the hook with `--no-verify` unless the user explicitly instructs it in the current session.
 
 ## Standards
 - Respect `GEMINI.md` and any project-specific conventions documented outside this block.

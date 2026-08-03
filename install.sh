@@ -95,6 +95,25 @@ for f in CLAUDE_PLAN.template.md GEMINI_FEEDBACK.template.md; do
   fi
 done
 
+# 2b) gate-arbiter agent (create-if-missing). Same policy as the plan templates:
+#     an existing arbiter is NEVER overwritten — it holds the repo's hand-written
+#     undismissable-concerns list, which a refresh would silently destroy. Nothing
+#     is backed up because nothing existing is touched.
+ARBITER_SRC="$SRC_DIR/templates/agents/gate-arbiter.template.md"
+ARBITER_DEST="$ROOT/.claude/agents/gate-arbiter.md"
+ARBITER_CREATED=0
+if [ -f "$ARBITER_DEST" ]; then
+  echo "  skip .claude/agents/gate-arbiter.md (exists)"
+elif [ "$DRY_RUN" = 1 ]; then
+  echo "  would create .claude/agents/gate-arbiter.md"
+  ARBITER_CREATED=1
+else
+  mkdir -p "$ROOT/.claude/agents"
+  cp "$ARBITER_SRC" "$ARBITER_DEST"
+  echo "  created .claude/agents/gate-arbiter.md"
+  ARBITER_CREATED=1
+fi
+
 # 3) pre-commit hook
 HOOK="$ROOT/.git/hooks/pre-commit"
 if [ "$DRY_RUN" = 1 ]; then
@@ -277,7 +296,13 @@ echo "  - Edit .claude-gemini-workflow.conf to set the reviewer CLI / model / mo
 echo "  - Authenticate the reviewer CLI on this machine (e.g. run 'gemini' once and sign in)."
 echo "  - Gemini must TRUST this folder or reviews silently no-op. The seeded config exports"
 echo "    GEMINI_CLI_TRUST_WORKSPACE=true to handle this; or run 'gemini' here once to trust it."
-echo "  - The commit review runs on 'git commit'. Bypass with: git commit --no-verify"
+echo "  - The commit review runs on 'git commit'. Bypass only when you explicitly want to:"
+echo "    git commit --no-verify"
+if [ "$ARBITER_CREATED" = 1 ]; then
+  echo "  - IMPORTANT: edit .claude/agents/gate-arbiter.md and fill in the UNDISMISSABLE CONCERNS"
+  echo "    section with THIS repo's critical domains (data integrity, auth, money, migrations,"
+  echo "    public contracts, ...). Until you do, the arbiter has no domains it must never dismiss."
+fi
 echo "  - The PLAN review runs when Claude submits a plan (ExitPlanMode hook). Set"
 echo "    PLAN_REVIEW_MODE=warn in .claude-gemini-workflow.conf for review-only, or remove"
 echo "    the ExitPlanMode entry from .claude/settings.local.json to disable it."
