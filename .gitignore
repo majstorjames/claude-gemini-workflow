@@ -6,3 +6,11 @@
 
 # Backup files created by install.sh in target repos
 *.bak
+
+# claude-gemini-workflow (local install artifacts)
+.claude-gemini-workflow.conf
+CLAUDE.md.bak
+GEMINI.md.bak
+.claude/settings.local.json
+.claude/settings.local.json.bak
+.claude/hooks/plan-review
