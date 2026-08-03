@@ -162,6 +162,30 @@ through). Fix it either way:
 > that's already set, even if commented out, is left alone), so you only edit a value when you want
 > to override its default.
 
+## Troubleshooting
+
+**⚠ REVIEW DID NOT RUN — commit allowed (UNREVIEWED).** Both gates **fail open**: if the reviewer
+CLI errors, the commit (or plan) goes through *unreviewed* rather than being blocked by a broken
+tool. That banner means no review happened — treat it as a failure, not a pass. The hook reads the
+reviewer's stderr and names the likely cause; the three seen in practice:
+
+| Symptom in stderr | Cause | Fix |
+|---|---|---|
+| `API_KEY_INVALID` / `API key not valid` | invalid or not-yet-propagated API key | check `GEMINI_API_KEY`; if the key is new, wait a few minutes and retry |
+| `UNAUTHENTICATED` / `ACCESS_TOKEN_TYPE_UNSUPPORTED` | CLI not authenticated, or a stale credential | run `gemini` interactively and re-select the auth method |
+| trust / untrusted-folder wording | workspace not trusted | see [Prerequisites & trust](#prerequisites--trust) |
+
+**`AQ.`-prefixed keys are valid.** Google's current API-key format starts with `AQ.`, not the older
+`AIza`. Don't rotate a key just because of its prefix. A freshly created key can be rejected for a
+few minutes before it propagates, so retry the identical invocation before concluding it's bad.
+
+**Multiple `gemini` installs shadow each other.** A Homebrew and an npm install can sit on the same
+PATH at different versions, so the one you tested interactively isn't the one the hook runs.
+`which -a gemini` reveals it — keep exactly one.
+
+**OAuth may be unavailable.** Google-account (OAuth) sign-in for individuals can be blocked pending
+the Antigravity migration. API-key auth is the reliable path for the hooks.
+
 ## Bypass
 
 ```bash

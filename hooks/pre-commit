@@ -93,11 +93,25 @@ if ! REVIEW_OUTPUT="$("$REVIEWER_CMD" ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} < "$PR
   emit "${C_YELLOW}${C_BOLD} ⚠ REVIEW DID NOT RUN — commit allowed (UNREVIEWED)${C_RESET}"
   emit "${C_YELLOW}${C_BOLD}${RULE}${C_RESET}"
   [ -n "$REVIEW_OUTPUT" ] && emit "$REVIEW_OUTPUT"
-  emit "$(cat "$ERR_FILE" 2>/dev/null || true)"
+  ERR_TEXT="$(cat "$ERR_FILE" 2>/dev/null || true)"
+  emit "$ERR_TEXT"
   emit ""
-  emit "${C_YELLOW}[cgw] The reviewer CLI errored, so this commit was NOT reviewed. Common cause: Gemini"
-  emit "      needs to trust this folder — add 'export GEMINI_CLI_TRUST_WORKSPACE=true' to"
-  emit "      .claude-gemini-workflow.conf, or run 'gemini' here once to trust it.${C_RESET}"
+  # Point at the ACTUAL cause. The workspace-trust hint is the fallback, not the
+  # default guess: in practice an auth failure is just as common and reads nothing
+  # like a trust problem.
+  if printf '%s' "$ERR_TEXT" | grep -qiE 'API_KEY_INVALID|API key not valid'; then
+    emit "${C_YELLOW}[cgw] The reviewer CLI errored, so this commit was NOT reviewed. The reviewer's API"
+    emit "      key was rejected — check the GEMINI_API_KEY environment variable. (Keys with the newer"
+    emit "      'AQ.' prefix are valid; a freshly created key can take a few minutes to propagate.)${C_RESET}"
+  elif printf '%s' "$ERR_TEXT" | grep -qiE 'UNAUTHENTICATED|ACCESS_TOKEN_TYPE_UNSUPPORTED'; then
+    emit "${C_YELLOW}[cgw] The reviewer CLI errored, so this commit was NOT reviewed. The reviewer is not"
+    emit "      authenticated or is sending a stale credential — re-run the reviewer CLI interactively"
+    emit "      and re-select the auth method.${C_RESET}"
+  else
+    emit "${C_YELLOW}[cgw] The reviewer CLI errored, so this commit was NOT reviewed. Common cause: Gemini"
+    emit "      needs to trust this folder — add 'export GEMINI_CLI_TRUST_WORKSPACE=true' to"
+    emit "      .claude-gemini-workflow.conf, or run 'gemini' here once to trust it.${C_RESET}"
+  fi
   emit ""
   exit 0
 fi
