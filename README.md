@@ -186,6 +186,10 @@ PATH at different versions, so the one you tested interactively isn't the one th
 **OAuth may be unavailable.** Google-account (OAuth) sign-in for individuals can be blocked pending
 the Antigravity migration. API-key auth is the reliable path for the hooks.
 
+**`git pull` on a kit clone aborts over `.gitignore`.** An older install edited the kit's own
+tracked `.gitignore`. Run `git checkout -- .gitignore` and pull again; current installs detect the
+kit's own repo and skip that step.
+
 ## Bypass
 
 ```bash
@@ -220,6 +224,9 @@ templates/
   GEMINI.section.md            reviewer scaffold (Gemini side)
   agents/gate-arbiter.template.md  arbiter agent that adjudicates failed-gate findings
   docs/plans/*.template.md     plan + feedback skeletons
+
+seeded in your repo (create-if-missing):
+decisions.md                   escalation ledger — gate dispute rulings the arbiter reads first
 ```
 
 ## License

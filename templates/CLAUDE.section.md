@@ -9,6 +9,10 @@ You work alongside Gemini CLI as a "suggest and double-check" team.
 - **Integrate:** before executing, read `docs/plans/GEMINI_FEEDBACK.md` and **address each finding — fix it, or justify in the plan why not.** Don't silently skip critiques.
 - **Automatic plan gate:** whenever you submit a plan via plan mode (the `ExitPlanMode` tool), a hook runs Gemini over it first. If it comes back with issues (block mode), the plan is denied and Gemini's feedback is handed back to you — read it, revise the plan, and resubmit.
 
+## Branch discipline
+- Agent-driven work happens on a **feature branch** — never commit directly to the default branch (`main` / `master`). Create the branch before the first commit.
+- **Merging to the default branch is the user's call, not yours.** Hand over the branch (or open a PR) and stop there; don't merge, fast-forward, or push to the default branch on your own initiative.
+
 ## Autonomous Commit Workflow
 - When a task is complete, stage and commit the change.
 - A pre-commit hook runs the reviewer CLI (default `gemini`, using the CLI's configured model) over the staged diff as a quality gate.

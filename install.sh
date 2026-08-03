@@ -114,6 +114,20 @@ else
   ARBITER_CREATED=1
 fi
 
+# 2c) escalation ledger (create-if-missing). The arbiter template instructs the
+#     arbiter to read decisions.md before ruling, so ship the file it expects
+#     instead of leaving a dangling reference. Never overwritten — it accumulates
+#     the user's rulings, exactly what a refresh must not discard.
+LEDGER="$ROOT/decisions.md"
+if [ -f "$LEDGER" ]; then
+  echo "  skip decisions.md (exists)"
+elif [ "$DRY_RUN" = 1 ]; then
+  echo "  would create decisions.md"
+else
+  printf '%s\n' "# Escalation ledger: gate dispute rulings. One line per ruling. Read by gate-arbiter before ruling." > "$LEDGER"
+  echo "  created decisions.md"
+fi
+
 # 3) pre-commit hook
 HOOK="$ROOT/.git/hooks/pre-commit"
 if [ "$DRY_RUN" = 1 ]; then
@@ -225,9 +239,18 @@ fi
 [ "$DRY_RUN" != 1 ] && mkdir -p "$ROOT/.git/claude-gemini-workflow"
 
 # 6) ignore local-only install artifacts (idempotent, marker-guarded)
+#    Skipped when the kit is installed into its OWN repo (dogfooding): there the
+#    .gitignore is a TRACKED kit file, so appending to it leaves a local
+#    modification that makes the next `git pull` to upgrade the kit abort.
 GITIGNORE="$ROOT/.gitignore"
 GI_MARKER="# claude-gemini-workflow"
-if [ -f "$GITIGNORE" ] && grep -qF "$GI_MARKER" "$GITIGNORE"; then
+SELF_INSTALL=0
+if [ -f "$ROOT/workflow.config.example.sh" ] && [ -f "$ROOT/hooks/pre-commit" ]; then
+  SELF_INSTALL=1
+fi
+if [ "$SELF_INSTALL" = 1 ]; then
+  echo "  skip .gitignore (kit's own repo — its .gitignore is tracked; editing it would break 'git pull' upgrades)"
+elif [ -f "$GITIGNORE" ] && grep -qF "$GI_MARKER" "$GITIGNORE"; then
   echo "  skip .gitignore (already has claude-gemini-workflow block)"
 elif [ "$DRY_RUN" = 1 ]; then
   echo "  would add .gitignore block: .claude-gemini-workflow.conf*, CLAUDE.md.bak, GEMINI.md.bak, .claude/settings.local.json*, .claude/hooks/plan-review"
