@@ -28,6 +28,18 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
   exit 1
 }
 
+# Opt-out sentinel: a repo that retired the workflow marks it with this file
+# (first line = the repo's stated reason, ideally a pointer to a decision doc).
+# Checked before anything is touched so a habitual re-run can't quietly revert a
+# documented retirement decision. Applies to --dry-run too.
+DISABLE_SENTINEL="$ROOT/.claude-gemini-workflow.disabled"
+if [ -f "$DISABLE_SENTINEL" ]; then
+  IFS= read -r reason < "$DISABLE_SENTINEL" || true
+  [ -n "$reason" ] && printf '%s\n' "$reason"
+  echo "workflow disabled in this repo — nothing installed. Delete .claude-gemini-workflow.disabled to re-enable."
+  exit 0
+fi
+
 START_MARK="<!-- claude-gemini-workflow:start -->"
 END_MARK="<!-- claude-gemini-workflow:end -->"
 

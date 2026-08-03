@@ -111,6 +111,15 @@ to install it (`npm install -g @google/gemini-cli`); pass `--yes` to auto-confir
 non-interactive use. `claude` itself is **not** checked or installed — no script invokes it; it's
 how you *drive* the workflow, not a runtime dependency of the commit gate.
 
+### Opting out / retiring
+
+If a repo decides to retire the workflow, make that decision stick against future installer runs:
+create `.claude-gemini-workflow.disabled` at the repo root with a one-line reason (ideally a
+pointer to the decision doc), and remove the hooks per [Uninstall](#uninstall). From then on every
+`install.sh` run against that repo — including `--dry-run` — is a no-op: it prints the reason and
+exits before touching any file, so a habitual re-run can't silently reinstate the workflow.
+Delete the sentinel file to re-enable installs.
+
 ## Configure
 
 Installed to the repo root as `.claude-gemini-workflow.conf`:
@@ -211,6 +220,10 @@ Restore the `*.bak` files, delete `.claude-gemini-workflow.conf`, and remove
 `.claude/hooks/plan-review` and the `ExitPlanMode` entry from `.claude/settings.local.json`. For
 arbitration, delete `.claude/agents/gate-arbiter.md` — with no arbiter present, Claude falls back
 to reading the reviewer's feedback directly.
+
+To make the removal permanent, also create a `.claude-gemini-workflow.disabled` sentinel at the
+repo root with a one-line reason — future `install.sh` runs then no-op instead of reinstalling
+(see [Opting out / retiring](#opting-out--retiring)).
 
 ## Contents
 
